@@ -16,7 +16,7 @@ import { RepositoryPage } from './pages/RepositoryPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
-import { AdminTeamsPage } from './pages/admin/AdminTeamsPage';
+import { TeamsPage } from './pages/TeamsPage';
 import { AdminAuditPage } from './pages/admin/AdminAuditPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { ProfilePage } from './pages/ProfilePage';
@@ -68,8 +68,9 @@ export const App = () => {
             <Route path="repository" element={<RepositoryPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
+            <Route path="teams" element={<TeamsPage />} />
             <Route path="admin/users" element={<AdminUsersPage />} />
-            <Route path="admin/teams" element={<AdminTeamsPage />} />
+            <Route path="admin/teams" element={<TeamsPage />} />
             <Route path="admin/audit" element={<AdminAuditPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
             <Route path="profile" element={<ProfilePage />} />

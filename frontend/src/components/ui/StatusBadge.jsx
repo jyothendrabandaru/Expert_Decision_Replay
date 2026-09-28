@@ -95,18 +95,31 @@ export const ImplementationStatusBadge = ({ status }) => {
   );
 };
 
-export const RoleBadge = ({ role }) => {
-  const r = (role || 'employee').toLowerCase();
+export const RoleBadge = ({ role, roleCode, role_code }) => {
+  const raw = (role || roleCode || role_code || 'employee').toLowerCase();
   const config = {
-    administrator: { label: 'Administrator', bg: 'bg-purple-100 text-purple-800 border-purple-200' },
-    manager: { label: 'Manager', bg: 'bg-blue-100 text-blue-800 border-blue-200' },
-    reviewer: { label: 'Reviewer', bg: 'bg-amber-100 text-amber-800 border-amber-200' },
-    employee: { label: 'Employee', bg: 'bg-slate-100 text-slate-700 border-slate-200' },
+    administrator: { 
+      label: 'Administrator', 
+      bg: 'bg-purple-100 text-purple-800 border-purple-300 ring-1 ring-purple-400/20' 
+    },
+    manager: { 
+      label: 'Manager', 
+      bg: 'bg-blue-100 text-blue-800 border-blue-300 ring-1 ring-blue-400/20' 
+    },
+    reviewer: { 
+      label: 'Reviewer', 
+      bg: 'bg-amber-100 text-amber-900 border-amber-300 ring-1 ring-amber-400/20' 
+    },
+    employee: { 
+      label: 'Employee', 
+      bg: 'bg-emerald-50 text-emerald-800 border-emerald-300 ring-1 ring-emerald-400/20' 
+    },
   };
-  const item = config[r] || { label: role, bg: 'bg-slate-100 text-slate-700 border-slate-200' };
+  const item = config[raw] || { label: raw.toUpperCase(), bg: 'bg-slate-100 text-slate-700 border-slate-300' };
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider border ${item.bg}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide border shadow-2xs ${item.bg}`}>
       {item.label}
     </span>
   );
 };
+

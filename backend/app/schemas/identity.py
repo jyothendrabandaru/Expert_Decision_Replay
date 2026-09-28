@@ -54,3 +54,31 @@ class TeamOut(BaseModel):
     members: list[TeamMemberOut] = []
     created_at: datetime
     updated_at: datetime
+
+
+class TeamJoinRequestCreate(BaseModel):
+    reason: str | None = None
+
+
+class TeamJoinRequestReview(BaseModel):
+    action: str = Field(pattern="^(approve|reject)$")
+    response_note: str | None = None
+
+
+class TeamJoinRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    team_id: UUID
+    team_name: str
+    user_id: UUID
+    user_name: str
+    user_email: str
+    user_role_code: str
+    reason: str | None = None
+    status: str
+    reviewed_by_id: UUID | None = None
+    reviewed_by_name: str | None = None
+    reviewed_at: datetime | None = None
+    response_note: str | None = None
+    created_at: datetime

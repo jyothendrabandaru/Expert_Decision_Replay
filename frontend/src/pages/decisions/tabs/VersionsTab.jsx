@@ -1,5 +1,6 @@
 import React from 'react';
 import { GitCompare } from 'lucide-react';
+import { formatLocalDateTime } from '../../../utils/date';
 
 export const VersionsTab = ({ versions, handleOpenDiff }) => {
   return (
@@ -20,7 +21,7 @@ export const VersionsTab = ({ versions, handleOpenDiff }) => {
                 <h4 className="font-bold text-slate-900">{ver.reason}</h4>
               </div>
               <p className="text-slate-500 text-[11px]">
-                Created by <strong className="text-slate-700">{ver.created_by_name}</strong> on {new Date(ver.created_at).toLocaleString()}
+                Created by <strong className="text-slate-700">{ver.created_by_name}</strong> on <span className="font-mono">{formatLocalDateTime(ver.created_at)}</span>
               </p>
             </div>
 

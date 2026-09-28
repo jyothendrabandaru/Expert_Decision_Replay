@@ -18,7 +18,7 @@ from app.models.decision import (
     Risk,
     Stakeholder,
 )
-from app.models.identity import Role, Team, TeamMember, User, UserProfile
+from app.models.identity import Role, Team, TeamJoinRequest, TeamMember, User, UserProfile
 from app.models.taxonomy import DecisionCategory, DecisionTag, DecisionTagLink
 
 __all__ = [
@@ -27,6 +27,7 @@ __all__ = [
     "UserProfile",
     "Team",
     "TeamMember",
+    "TeamJoinRequest",
     "DecisionCategory",
     "DecisionTag",
     "DecisionTagLink",

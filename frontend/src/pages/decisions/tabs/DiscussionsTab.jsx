@@ -1,5 +1,6 @@
 import React from 'react';
 import { Plus } from 'lucide-react';
+import { formatLocalTime, formatLocalDate } from '../../../utils/date';
 
 export const DiscussionsTab = ({
   discussions,
@@ -41,8 +42,8 @@ export const DiscussionsTab = ({
                   <div key={c.id} className="bg-white p-3.5 rounded-xl border border-slate-200 text-xs space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-slate-900">{c.author_name}</span>
-                      <span className="text-[10px] text-slate-400">
-                        {new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {formatLocalTime(c.created_at)}
                       </span>
                     </div>
                     <p className="text-slate-700 leading-relaxed">{c.body}</p>
@@ -116,8 +117,8 @@ export const DiscussionsTab = ({
             <div key={note.id} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
               <div className="flex items-center justify-between">
                 <h4 className="font-bold text-sm text-slate-900">{note.title}</h4>
-                <span className="text-slate-400">
-                  Occurred on: {new Date(note.occurred_at).toLocaleDateString()}
+                <span className="text-slate-400 font-mono">
+                  Occurred on: {formatLocalDate(note.occurred_at)}
                 </span>
               </div>
               <p className="text-slate-700 leading-relaxed whitespace-pre-line">{note.body}</p>

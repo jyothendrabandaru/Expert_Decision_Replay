@@ -99,6 +99,28 @@ def seed_database() -> None:
                 db.add(TeamMember(team_id=team_arch.id, user_id=u.id))
             db.flush()
 
+        additional_teams_data = [
+            ("Cloud Infrastructure & SRE", "Enterprise cloud migrations, multi-region Kubernetes clusters, and 99.99% uptime reliability engineering.", "admin@edrp.org", ["admin@edrp.org", "reviewer@edrp.org"]),
+            ("Data Engineering & AI", "Large-scale data pipelines, machine learning model governance, vector search, and analytical warehouses.", "manager@edrp.org", ["manager@edrp.org", "reviewer@edrp.org"]),
+            ("Cybersecurity & Zero-Trust", "Corporate identity providers, automated compliance auditing, threat modeling, and encryption standards.", "admin@edrp.org", ["admin@edrp.org", "manager@edrp.org"]),
+            ("Product Innovation Lab", "Rapid prototyping, customer experience experiments, and next-generation decision automation tooling.", "manager@edrp.org", ["manager@edrp.org", "employee@edrp.org"]),
+        ]
+
+        for t_name, t_desc, creator_email, member_emails in additional_teams_data:
+            existing_t = db.scalar(select(Team).where(Team.name == t_name))
+            if not existing_t:
+                new_t = Team(
+                    name=t_name,
+                    description=t_desc,
+                    created_by_id=users_map[creator_email].id,
+                )
+                db.add(new_t)
+                db.flush()
+                for m_email in member_emails:
+                    if m_email in users_map:
+                        db.add(TeamMember(team_id=new_t.id, user_id=users_map[m_email].id))
+                db.flush()
+
         # 4. CATEGORIES
         cats_data = [
             ("Architecture & Engineering", "architecture-engineering", "Core software, system architecture, and tech stack choices."),

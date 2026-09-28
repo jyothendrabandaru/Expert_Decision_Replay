@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { DecisionStatusBadge, ImplementationStatusBadge } from '../../components/ui/StatusBadge';
+import { formatLocalDate } from '../../utils/date';
 import api from '../../api/client';
 import { downloadFile } from '../../utils/download';
 
@@ -423,7 +424,7 @@ export const DecisionDetailsPage = () => {
             <span className="text-slate-300">•</span>
             <span>Team: <strong className="text-slate-700 font-semibold">{decision.team_name || 'General'}</strong></span>
             <span className="text-slate-300">•</span>
-            <span>Created: {new Date(decision.created_at).toLocaleDateString()}</span>
+            <span>Created: <strong className="text-slate-700 font-semibold">{formatLocalDate(decision.created_at)}</strong></span>
           </div>
         </div>
 

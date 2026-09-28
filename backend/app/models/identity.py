@@ -67,3 +67,20 @@ class TeamMember(Base):
 
     team: Mapped[Team] = relationship(back_populates="members")
     user: Mapped[User] = relationship()
+
+
+class TeamJoinRequest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "team_join_requests"
+    __table_args__ = (UniqueConstraint("team_id", "user_id", "status", name="uq_team_user_request_status"),)
+
+    team_id: Mapped[UUID] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)  # pending, approved, rejected
+    reviewed_by_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    response_note: Mapped[str | None] = mapped_column(Text)
+
+    team: Mapped[Team] = relationship()
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+    reviewed_by: Mapped[User | None] = relationship(foreign_keys=[reviewed_by_id])
