@@ -22,3 +22,12 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 *.log
+
+# Databases & local storage
+*.db
+*.sqlite
+*.sqlite3
+edrp.db
+backend/edrp.db
+backend/storage/
+storage/
