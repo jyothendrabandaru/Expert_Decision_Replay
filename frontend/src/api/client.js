@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: API_BASE,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -29,7 +31,7 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem('edrp_refresh_token');
       if (refreshToken) {
         try {
-          const res = await axios.post('/api/v1/auth/refresh', {
+          const res = await axios.post(`${API_BASE}/auth/refresh`, {
             refresh_token: refreshToken,
           });
           const { access_token, refresh_token: newRefresh } = res.data;
