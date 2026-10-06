@@ -32,9 +32,15 @@ import {
   Compass,
   Zap,
   HelpCircle,
-  BarChart2
+  BarChart2,
+  X,
+  UserCheck,
+  Filter,
+  Info
 } from 'lucide-react';
 import { RoleBadge, DecisionStatusBadge } from '../components/ui/StatusBadge';
+import { formatLocalDate } from '../utils/date';
+import { downloadFile } from '../utils/download';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 
@@ -54,6 +60,7 @@ export const RepositoryPage = () => {
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
   const [selectedDecisionForGraph, setSelectedDecisionForGraph] = useState(null);
   const [hoveredNode, setHoveredNode] = useState(null);
+  const [selectedGraphNode, setSelectedGraphNode] = useState(null);
 
   // Active Top Tab: 'All' | 'Documents' | 'Past Decisions' | 'Topics' | 'People' | 'Insights'
   const [activeCategoryTab, setActiveCategoryTab] = useState('All');
@@ -253,6 +260,13 @@ export const RepositoryPage = () => {
     return { total, paginated };
   };
 
+  const handleGraphNodeClick = (node) => {
+    setSelectedGraphNode(node);
+    if (node.type === 'decision' && node.metadata?.id) {
+      setSelectedDecisionForGraph(node.metadata.id);
+    }
+  };
+
   // Interactive Non-Shaking Knowledge Graph SVG
   const renderKnowledgeGraphSVG = () => {
     const width = 460;
@@ -382,10 +396,11 @@ export const RepositoryPage = () => {
           />
         )}
 
-        {/* Nodes with Fixed Coordinates & Zero Jitter */}
+        {/* Nodes with Fixed Coordinates & Interactive Click Events */}
         {Object.entries(nodePositions).map(([id, pos]) => {
           const isCenter = id === centerNode?.id;
           const isHovered = hoveredNode?.id === id;
+          const isSelected = selectedGraphNode?.id === id;
           const nodeColor = pos.node.color || (isCenter ? '#2563eb' : '#64748b');
 
           return (
@@ -394,13 +409,19 @@ export const RepositoryPage = () => {
               transform={`translate(${pos.x}, ${pos.y})`}
               onMouseEnter={() => setHoveredNode(pos.node)}
               onMouseLeave={() => setHoveredNode(null)}
-              onClick={() => {
-                if (pos.node.metadata?.id) {
-                  setSelectedDecisionForGraph(pos.node.metadata.id);
-                }
-              }}
+              onClick={() => handleGraphNodeClick(pos.node)}
               className="cursor-pointer select-none"
             >
+              {isSelected && (
+                <circle
+                  r={isCenter ? 41 : 31}
+                  fill="none"
+                  stroke={nodeColor}
+                  strokeWidth="2.5"
+                  strokeDasharray="4 3"
+                />
+              )}
+
               <circle
                 r={isCenter ? 38 : 30}
                 fill="transparent"
@@ -409,10 +430,10 @@ export const RepositoryPage = () => {
 
               <circle
                 r={isCenter ? 32 : 22}
-                fill={isCenter ? '#eff6ff' : '#ffffff'}
-                stroke={isHovered ? '#1d4ed8' : nodeColor}
-                strokeWidth={isHovered ? 3.5 : (isCenter ? 2.5 : 2)}
-                filter={isHovered ? 'url(#hoverGlow)' : 'url(#nodeShadow)'}
+                fill={isSelected ? '#eff6ff' : (isCenter ? '#eff6ff' : '#ffffff')}
+                stroke={isSelected ? '#1d4ed8' : (isHovered ? '#1d4ed8' : nodeColor)}
+                strokeWidth={isSelected ? 3.5 : (isHovered ? 3 : (isCenter ? 2.5 : 2))}
+                filter={isHovered || isSelected ? 'url(#hoverGlow)' : 'url(#nodeShadow)'}
                 className="transition-all duration-200"
               />
 
@@ -450,16 +471,16 @@ export const RepositoryPage = () => {
                   width="110"
                   height="18"
                   rx="6"
-                  fill="#ffffff"
-                  stroke={isHovered ? '#93c5fd' : '#e2e8f0'}
-                  strokeWidth={isHovered ? 1.5 : 0.8}
+                  fill={isSelected ? '#eff6ff' : '#ffffff'}
+                  stroke={isSelected ? '#3b82f6' : (isHovered ? '#93c5fd' : '#e2e8f0')}
+                  strokeWidth={isSelected ? 1.5 : (isHovered ? 1.2 : 0.8)}
                   opacity="0.95"
                 />
                 <text
                   x="0"
                   y="3"
                   textAnchor="middle"
-                  className="text-[9.5px] font-bold fill-slate-800"
+                  className={`text-[9.5px] font-bold ${isSelected ? 'fill-blue-700' : 'fill-slate-800'}`}
                 >
                   {pos.node.label.length > 18 ? pos.node.label.slice(0, 16) + '…' : pos.node.label}
                 </text>
@@ -479,6 +500,835 @@ export const RepositoryPage = () => {
           );
         })}
       </svg>
+    );
+  };
+
+  // Node Detail Inspector Modal
+  const renderNodeDetailModal = () => {
+    if (!selectedGraphNode) return null;
+
+    const node = selectedGraphNode;
+    const type = node.type;
+
+    // 1. TEAM SQUAD INSPECTOR
+    if (type === 'team') {
+      const headerColor = 'from-purple-700 via-indigo-700 to-purple-900';
+      const typeBadgeLabel = 'SQUAD & TEAM INTELLIGENCE';
+
+      const teamObj = teams.find(
+        (t) =>
+          (node.metadata?.team_id && t.id === node.metadata.team_id) ||
+          (node.metadata?.team_name && t.name?.toLowerCase() === node.metadata.team_name.toLowerCase()) ||
+          t.name?.toLowerCase() === node.label.toLowerCase()
+      );
+
+      const members =
+        node.metadata?.members && node.metadata.members.length > 0
+          ? node.metadata.members
+          : teamObj?.members || [];
+
+      const teamDecisions = decisions.filter(
+        (d) =>
+          (teamObj && d.team_id === teamObj.id) ||
+          (node.metadata?.team_id && d.team_id === node.metadata.team_id) ||
+          (node.metadata?.team_name && d.team_name?.toLowerCase() === node.metadata.team_name.toLowerCase()) ||
+          (node.metadata?.decision_id && d.id === node.metadata.decision_id)
+      );
+
+      return (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setSelectedGraphNode(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className={`p-6 bg-gradient-to-r ${headerColor} text-white relative flex items-start justify-between`}>
+              <div className="flex items-start gap-3.5 pr-8">
+                <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center flex-shrink-0 text-white shadow-inner">
+                  <Users className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-white/20 text-white border border-white/30 backdrop-blur-md">
+                      {typeBadgeLabel}
+                    </span>
+                    <span className="text-xs text-purple-200">
+                      {members.length} Squad Member{members.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-bold text-white mt-1">{node.metadata?.team_name || node.label}</h2>
+                  <p className="text-xs text-purple-100 mt-1 line-clamp-2">
+                    {teamObj?.description || node.metadata?.description || 'Cross-functional engineering squad delivering core architectural milestones.'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="text-white/70 hover:text-white hover:bg-white/20 p-2 rounded-xl transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6 divide-y divide-slate-100">
+              {/* Linked Decision in Graph */}
+              {node.metadata?.decision_title && (
+                <div className="bg-purple-50/70 border border-purple-100 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 block">
+                      Active Focal Decision
+                    </span>
+                    <h4 className="text-sm font-bold text-purple-950 mt-0.5">
+                      {node.metadata.decision_title}
+                    </h4>
+                  </div>
+                  {node.metadata.decision_id && (
+                    <Link
+                      to={`/decisions/${node.metadata.decision_id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-purple-700 bg-white border border-purple-200 hover:bg-purple-100/60 transition-colors shadow-2xs whitespace-nowrap self-start sm:self-auto"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Replay Case</span>
+                    </Link>
+                  )}
+                </div>
+              )}
+
+              {/* Squad Members Roster */}
+              <div className="pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <Users className="w-4 h-4 text-purple-600" />
+                    <span>Active Squad Members ({members.length})</span>
+                  </h3>
+                  <span className="text-[11px] text-slate-400">Team Roster</span>
+                </div>
+
+                {members.length === 0 ? (
+                  <div className="text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-xs text-slate-500">
+                    No active squad members currently registered for this squad.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {members.map((m, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-slate-50/80 hover:bg-slate-100/80 border border-slate-200/80 rounded-xl p-3 flex items-center justify-between gap-3 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs flex-shrink-0">
+                            {(m.full_name || m.email || 'U').charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-900 truncate">
+                              {m.full_name || m.email}
+                            </p>
+                            <p className="text-[10.5px] text-slate-500 truncate">{m.email}</p>
+                            {m.job_title && (
+                              <p className="text-[10px] text-purple-600 font-medium truncate">{m.job_title}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0">
+                          <RoleBadge roleCode={m.role_code || 'employee'} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Squad Authored Decisions */}
+              <div className="pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <FolderKanban className="w-4 h-4 text-purple-600" />
+                    <span>Decisions by this Squad ({teamDecisions.length})</span>
+                  </h3>
+                  <span className="text-[11px] text-slate-400">Architecture Records</span>
+                </div>
+
+                {teamDecisions.length === 0 ? (
+                  <div className="text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-xs text-slate-500">
+                    No historical decision records tied specifically to this squad.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {teamDecisions.map((dec) => (
+                      <div
+                        key={dec.id}
+                        className="bg-white border border-slate-200 rounded-xl p-3 hover:border-purple-300 hover:shadow-xs transition-all flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <DecisionStatusBadge status={dec.status} />
+                            <span className="text-[10px] font-bold text-slate-500">
+                              v{dec.current_version_no || '1.0'}
+                            </span>
+                          </div>
+                          <h4 className="text-xs font-bold text-slate-900 truncate mt-1">
+                            {dec.title}
+                          </h4>
+                          {dec.problem_statement && (
+                            <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                              {dec.problem_statement}
+                            </p>
+                          )}
+                        </div>
+
+                        <Link
+                          to={`/decisions/${dec.id}`}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors flex-shrink-0 shadow-2xs"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Replay</span>
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                {teamObj && (
+                  <button
+                    onClick={() => {
+                      setSelectedTeam(teamObj.id);
+                      setActiveCategoryTab('Past Decisions');
+                      setSelectedGraphNode(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+                  >
+                    <Filter className="w-3.5 h-3.5" />
+                    <span>Filter Repository to this Squad</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    navigate('/teams');
+                    setSelectedGraphNode(null);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  <Users className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Open in My Teams</span>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 2. DECISION (ADR)
+    if (type === 'decision') {
+      const decId = node.metadata?.id || node.id.replace('decision_', '');
+      const dec = decisions.find((d) => d.id === decId) || node.metadata || {};
+
+      return (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setSelectedGraphNode(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-900 text-white relative flex items-start justify-between">
+              <div className="flex items-start gap-3.5 pr-8">
+                <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center flex-shrink-0 text-white shadow-inner">
+                  <FolderKanban className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-white/20 text-white border border-white/30 backdrop-blur-md">
+                      ARCHITECTURAL DECISION RECORD
+                    </span>
+                    <span className="text-xs text-blue-200">v{dec.current_version_no || '1.0'}</span>
+                  </div>
+                  <h2 className="text-xl font-bold text-white mt-1">{dec.title || node.label}</h2>
+                  <p className="text-xs text-blue-100 mt-1">
+                    Squad: <strong className="text-white">{dec.team_name || node.metadata?.team_name || 'Engineering'}</strong> • Owner: <strong className="text-white">{dec.owner_name || 'Lead Architect'}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="text-white/70 hover:text-white hover:bg-white/20 p-2 rounded-xl transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <DecisionStatusBadge status={dec.status || 'approved'} />
+                {dec.category_name && (
+                  <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                    Category: {dec.category_name}
+                  </span>
+                )}
+                {dec.created_at && (
+                  <span className="text-xs text-slate-400 font-mono">
+                    Recorded {formatLocalDate(dec.created_at)}
+                  </span>
+                )}
+              </div>
+
+              {dec.problem_statement && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-1">
+                    Problem Statement & Architecture Challenge
+                  </h4>
+                  <p className="text-xs text-slate-600 leading-relaxed">{dec.problem_statement}</p>
+                </div>
+              )}
+
+              {dec.outcome_summary && (
+                <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4">
+                  <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-1">
+                    Selected Outcome & Solution Rationale
+                  </h4>
+                  <p className="text-xs text-emerald-900 leading-relaxed">{dec.outcome_summary}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+              <Link
+                to={`/decisions/${dec.id || decId}`}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+              >
+                <Eye className="w-4 h-4" />
+                <span>Open Full Decision Replay Case</span>
+              </Link>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 3. DOCUMENT
+    if (type === 'document') {
+      const downloadUrl = node.metadata?.download_url || (node.metadata?.decision_id ? `/api/v1/reports/decision/${node.metadata.decision_id}/pdf` : '#');
+
+      return (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setSelectedGraphNode(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 bg-gradient-to-r from-cyan-700 via-teal-700 to-cyan-900 text-white relative flex items-start justify-between">
+              <div className="flex items-start gap-3.5 pr-8">
+                <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center flex-shrink-0 text-white shadow-inner">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-white/20 text-white border border-white/30 backdrop-blur-md">
+                    SPECIFICATION DOCUMENT
+                  </span>
+                  <h2 className="text-base font-bold text-white mt-1 break-all">{node.metadata?.filename || node.label}</h2>
+                  <p className="text-xs text-cyan-100 mt-1">
+                    Format: <strong className="text-white">{(node.metadata?.file_type || 'PDF').toUpperCase()}</strong> • Size: <strong className="text-white">{formatBytes(node.metadata?.file_size_bytes)}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="text-white/70 hover:text-white hover:bg-white/20 p-2 rounded-xl transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {node.metadata?.decision_title && (
+                <div className="bg-cyan-50/70 border border-cyan-100 rounded-xl p-3.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-800 block">
+                    Associated Architectural Decision
+                  </span>
+                  <p className="text-xs font-bold text-cyan-950 mt-0.5">{node.metadata.decision_title}</p>
+                </div>
+              )}
+              <p className="text-xs text-slate-600 leading-relaxed">
+                This specification provides design diagrams, verification reports, and architecture specifications linked to historical decision evaluations.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+              <button
+                onClick={() => downloadFile(downloadUrl, node.metadata?.filename || 'specification.pdf')}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Specification</span>
+              </button>
+
+              {node.metadata?.decision_id && (
+                <Link
+                  to={`/decisions/${node.metadata.decision_id}`}
+                  className="inline-flex items-center gap-1 px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Replay ADR</span>
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 4. PERSON (CONTRIBUTOR)
+    if (type === 'person') {
+      const personUser = usersList.find(
+        (u) =>
+          (node.metadata?.user_id && u.id === node.metadata.user_id) ||
+          (node.metadata?.email && u.email === node.metadata.email) ||
+          u.profile?.full_name?.toLowerCase() === node.label.toLowerCase()
+      );
+
+      const personDecisions = decisions.filter(
+        (d) =>
+          (personUser && d.owner_id === personUser.id) ||
+          (node.metadata?.user_id && d.owner_id === node.metadata.user_id) ||
+          (node.metadata?.decision_id && d.id === node.metadata.decision_id)
+      );
+
+      return (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setSelectedGraphNode(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-900 text-white relative flex items-start justify-between">
+              <div className="flex items-start gap-3.5 pr-8">
+                <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center flex-shrink-0 text-white shadow-inner">
+                  <UserCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-white/20 text-white border border-white/30 backdrop-blur-md">
+                      CONTRIBUTOR & ARCHITECT
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-bold text-white mt-1">{node.metadata?.name || node.label}</h2>
+                  <p className="text-xs text-emerald-100 mt-0.5">
+                    {node.metadata?.job_title || personUser?.profile?.job_title || 'Software Architect'} • {node.metadata?.department || personUser?.profile?.department || 'Engineering'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="text-white/70 hover:text-white hover:bg-white/20 p-2 rounded-xl transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5 overflow-y-auto">
+              <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Email Address</span>
+                  <span className="text-xs font-semibold text-slate-800">{node.metadata?.email || personUser?.email || 'architect@enterprise.org'}</span>
+                </div>
+                <RoleBadge roleCode={node.metadata?.role || personUser?.role?.code || 'employee'} />
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <FolderKanban className="w-4 h-4 text-emerald-600" />
+                  <span>Authored / Reviewed Decisions ({personDecisions.length})</span>
+                </h4>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {personDecisions.map((dec) => (
+                    <div
+                      key={dec.id}
+                      className="p-3 bg-white border border-slate-200 rounded-xl hover:border-emerald-300 flex items-center justify-between gap-3 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <DecisionStatusBadge status={dec.status} />
+                        <h5 className="text-xs font-bold text-slate-900 truncate mt-1">{dec.title}</h5>
+                      </div>
+                      <Link
+                        to={`/decisions/${dec.id}`}
+                        className="px-2.5 py-1 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors flex-shrink-0"
+                      >
+                        Replay
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+              <button
+                onClick={() => {
+                  setSearchQuery(node.metadata?.name || node.label);
+                  setActiveCategoryTab('All');
+                  setSelectedGraphNode(null);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>Filter Records by this Contributor</span>
+              </button>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 5. TOPIC / TAG
+    if (type === 'topic') {
+      const topicName = node.metadata?.tag_name || node.label;
+
+      return (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setSelectedGraphNode(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-800 text-white relative flex items-start justify-between">
+              <div className="flex items-start gap-3.5 pr-8">
+                <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center flex-shrink-0 text-white shadow-inner">
+                  <Tag className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-white/20 text-white border border-white/30 backdrop-blur-md">
+                    ARCHITECTURE TOPIC
+                  </span>
+                  <h2 className="text-xl font-bold text-white mt-1">#{topicName}</h2>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="text-white/70 hover:text-white hover:bg-white/20 p-2 rounded-xl transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-3">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Institutional architectural decisions, evaluation matrices, and technical specifications tagged with <strong>#{topicName}</strong>.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+              <button
+                onClick={() => {
+                  handleTopicClick(topicName);
+                  setSelectedGraphNode(null);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+              >
+                <Tag className="w-3.5 h-3.5" />
+                <span>Explore #{topicName} in Repository</span>
+              </button>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 6. STATUS / STATE
+    if (type === 'status') {
+      const statusValue = node.metadata?.status || 'approved';
+
+      return (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setSelectedGraphNode(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 bg-gradient-to-r from-emerald-600 via-green-700 to-emerald-800 text-white relative flex items-start justify-between">
+              <div className="flex items-start gap-3.5 pr-8">
+                <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center flex-shrink-0 text-white shadow-inner">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-white/20 text-white border border-white/30 backdrop-blur-md">
+                    GOVERNANCE LIFECYCLE STATE
+                  </span>
+                  <h2 className="text-xl font-bold text-white mt-1">{statusValue.toUpperCase()}</h2>
+                  <p className="text-xs text-emerald-100 mt-0.5">
+                    Implementation: <strong className="text-white">{node.metadata?.implementation_status || 'Active'}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="text-white/70 hover:text-white hover:bg-white/20 p-2 rounded-xl transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-3">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Represents decisions currently in the <strong>{statusValue}</strong> governance state with verified consensus, reviewer feedback, and implementation tracking.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+              <button
+                onClick={() => {
+                  setSelectedStatus(statusValue);
+                  setActiveCategoryTab('Past Decisions');
+                  setSelectedGraphNode(null);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span>Filter Decisions by {statusValue.toUpperCase()}</span>
+              </button>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 7. STRATEGIC IMPACT / CATEGORY PILLAR
+    if (type === 'impact') {
+      const catDecisions = decisions.filter(
+        (d) =>
+          (node.metadata?.category_id && d.category_id === node.metadata.category_id) ||
+          (node.metadata?.category_name && d.category_name?.toLowerCase() === node.metadata.category_name.toLowerCase()) ||
+          (node.metadata?.decision_id && d.id === node.metadata.decision_id)
+      );
+
+      return (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setSelectedGraphNode(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 bg-gradient-to-r from-pink-600 via-rose-600 to-indigo-800 text-white relative flex items-start justify-between">
+              <div className="flex items-start gap-3.5 pr-8">
+                <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center flex-shrink-0 text-white shadow-inner">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-white/20 text-white border border-white/30 backdrop-blur-md">
+                      STRATEGIC INFLUENCE & PILLAR
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-bold text-white mt-1">{node.metadata?.category_name || node.label}</h2>
+                  <p className="text-xs text-pink-100 mt-0.5">
+                    Architecture Roadmap & Domain Strategy
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="text-white/70 hover:text-white hover:bg-white/20 p-2 rounded-xl transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5 overflow-y-auto">
+              <div className="p-4 bg-pink-50/60 border border-pink-100 rounded-xl">
+                <h4 className="text-xs font-bold text-pink-900 uppercase tracking-wider mb-1">
+                  Roadmap Strategic Impact
+                </h4>
+                <p className="text-xs text-slate-700 leading-relaxed">
+                  {node.metadata?.description || 'Core strategic architectural pillar and technical baseline for high-impact enterprise initiatives.'}
+                </p>
+              </div>
+
+              {node.metadata?.decision_title && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                      Active Focal Decision
+                    </span>
+                    <h5 className="text-xs font-bold text-slate-900 mt-0.5">
+                      {node.metadata.decision_title}
+                    </h5>
+                  </div>
+                  {node.metadata.decision_id && (
+                    <Link
+                      to={`/decisions/${node.metadata.decision_id}`}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors flex-shrink-0"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Replay</span>
+                    </Link>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <FolderKanban className="w-4 h-4 text-pink-600" />
+                  <span>Decisions in this Architecture Pillar ({catDecisions.length})</span>
+                </h4>
+
+                {catDecisions.length === 0 ? (
+                  <div className="text-center py-5 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-xs text-slate-500">
+                    No additional decisions recorded under this specific category pillar.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-44 overflow-y-auto">
+                    {catDecisions.map((dec) => (
+                      <div
+                        key={dec.id}
+                        className="p-3 bg-white border border-slate-200 rounded-xl hover:border-pink-300 flex items-center justify-between gap-3 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <DecisionStatusBadge status={dec.status} />
+                          <h5 className="text-xs font-bold text-slate-900 truncate mt-1">{dec.title}</h5>
+                        </div>
+                        <Link
+                          to={`/decisions/${dec.id}`}
+                          className="px-2.5 py-1 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors flex-shrink-0"
+                        >
+                          Replay
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+              <button
+                onClick={() => {
+                  if (node.metadata?.category_id) {
+                    setSelectedCategory(node.metadata.category_id);
+                  }
+                  setActiveCategoryTab('Past Decisions');
+                  setSelectedGraphNode(null);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span>Filter Decisions in this Pillar</span>
+              </button>
+
+              <button
+                onClick={() => setSelectedGraphNode(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Generic fallback for any other node type
+    return (
+      <div 
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+        onClick={() => setSelectedGraphNode(null)}
+      >
+        <div
+          className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-6 bg-gradient-to-r from-blue-700 to-indigo-800 text-white flex items-start justify-between">
+            <div>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-white/20 text-white border border-white/30 backdrop-blur-md">
+                KNOWLEDGE NODE
+              </span>
+              <h2 className="text-lg font-bold text-white mt-1">{node.label}</h2>
+              <p className="text-xs text-blue-100 mt-0.5">{node.subLabel || 'Institutional Knowledge Entity'}</p>
+            </div>
+            <button onClick={() => setSelectedGraphNode(null)} className="text-white/70 hover:text-white p-2 rounded-xl">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="p-6">
+            <p className="text-xs text-slate-600">
+              Institutional entity connected in the enterprise architectural decision graph.
+            </p>
+          </div>
+          <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
+            <button onClick={() => setSelectedGraphNode(null)} className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -738,7 +1588,7 @@ export const RepositoryPage = () => {
                         <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-slate-700">{doc.uploaded_by_name || 'Architect'}</span>
                           <span>•</span>
-                          <span>{new Date(doc.uploaded_at).toLocaleDateString()}</span>
+                          <span className="font-mono">{formatLocalDate(doc.uploaded_at)}</span>
                           <span>•</span>
                           <span>{formatBytes(doc.file_size_bytes)}</span>
                           <span>•</span>
@@ -787,17 +1637,14 @@ export const RepositoryPage = () => {
                         </Link>
                       )}
 
-                      <a
-                        href={doc.download_url}
-                        download
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => downloadFile(doc.download_url, doc.filename)}
                         className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors"
                         title="Download Document"
                       >
                         <Download className="w-3.5 h-3.5" />
                         <span>Download</span>
-                      </a>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -822,7 +1669,7 @@ export const RepositoryPage = () => {
                       </h4>
 
                       <p className="text-[11px] text-slate-500 mt-1">
-                        By <strong className="text-slate-700">{doc.uploaded_by_name || 'Architect'}</strong> • {new Date(doc.uploaded_at).toLocaleDateString()}
+                        By <strong className="text-slate-700">{doc.uploaded_by_name || 'Architect'}</strong> • <span className="font-mono">{formatLocalDate(doc.uploaded_at)}</span>
                       </p>
 
                       <div className="mt-2 text-[10px] font-medium text-slate-600 bg-slate-50 px-2 py-1 rounded inline-block">
@@ -840,16 +1687,13 @@ export const RepositoryPage = () => {
                         </button>
                       ) : <span />}
 
-                      <a
-                        href={doc.download_url}
-                        download
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => downloadFile(doc.download_url, doc.filename)}
                         className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800"
                       >
                         <Download className="w-3 h-3" />
                         <span>Download</span>
-                      </a>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -941,7 +1785,37 @@ export const RepositoryPage = () => {
                 )}
               </div>
 
-              {hoveredNode && (
+              {selectedGraphNode ? (
+                <div className="p-3 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border-t border-blue-200 text-xs text-slate-800 flex items-center justify-between gap-3 animate-in fade-in duration-150">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+                      <span className="font-bold text-blue-950 truncate">{selectedGraphNode.label}</span>
+                      <span className="text-[9.5px] uppercase font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
+                        {selectedGraphNode.type}
+                      </span>
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 truncate mt-0.5">
+                      {selectedGraphNode.subLabel || 'Selected Node • Click Inspect for Full Section'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <button
+                      onClick={() => setSelectedGraphNode(selectedGraphNode)}
+                      className="px-2.5 py-1 text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-2xs"
+                    >
+                      Inspect
+                    </button>
+                    <button
+                      onClick={() => setSelectedGraphNode(null)}
+                      className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded transition-colors"
+                      title="Clear Selection"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : hoveredNode ? (
                 <div className="p-3 bg-blue-50/90 border-t border-blue-100 text-xs text-slate-800 animate-in fade-in duration-150">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-blue-900">{hoveredNode.label}</span>
@@ -950,8 +1824,13 @@ export const RepositoryPage = () => {
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-600 mt-0.5">
-                    {hoveredNode.subLabel || 'Institutional Node'}
+                    {hoveredNode.subLabel || 'Institutional Node • Click to inspect section & details'}
                   </p>
+                </div>
+              ) : (
+                <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Click any node in graph to open its details & team section</span>
                 </div>
               )}
 
@@ -1058,7 +1937,7 @@ export const RepositoryPage = () => {
                       <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
                         <span>Uploaded by <strong className="text-slate-700">{doc.uploaded_by_name || 'Architect'}</strong></span>
                         <span>•</span>
-                        <span>{new Date(doc.uploaded_at).toLocaleDateString()}</span>
+                        <span className="font-mono">{formatLocalDate(doc.uploaded_at)}</span>
                         <span>•</span>
                         <span>{formatBytes(doc.file_size_bytes)}</span>
                         <span>•</span>
@@ -1087,16 +1966,13 @@ export const RepositoryPage = () => {
                       </Link>
                     )}
 
-                    <a
-                      href={doc.download_url}
-                      download
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={() => downloadFile(doc.download_url, doc.filename)}
                       className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-3.5 py-1.5 rounded-lg shadow-xs transition-colors"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Download File</span>
-                    </a>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1185,8 +2061,8 @@ export const RepositoryPage = () => {
                           v{dec.current_version_no || '1.0'}
                         </span>
                       </div>
-                      <span className="text-[11px] font-medium text-slate-400">
-                        {new Date(dec.created_at).toLocaleDateString()}
+                      <span className="text-[11px] font-medium text-slate-400 font-mono">
+                        {formatLocalDate(dec.created_at)}
                       </span>
                     </div>
 
@@ -1463,6 +2339,9 @@ export const RepositoryPage = () => {
           </div>
         </div>
       )}
+
+      {/* Interactive Node Detail Inspector Modal */}
+      {renderNodeDetailModal()}
     </div>
   );
 };

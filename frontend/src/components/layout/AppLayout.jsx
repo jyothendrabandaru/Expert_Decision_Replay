@@ -128,12 +128,12 @@ export const AppLayout = () => {
   ];
 
   return (
-    <div className="min-h-screen flex bg-slate-50/70 antialiased font-sans">
+    <div className="h-screen w-screen overflow-hidden flex bg-slate-50/70 antialiased font-sans">
       {/* Sidebar Desktop */}
-      <aside className="hidden lg:flex flex-col w-64 bg-slate-950 text-slate-300 border-r border-slate-800/90 flex-shrink-0 select-none shadow-xl z-30">
+      <aside className="hidden lg:flex flex-col w-64 h-full bg-slate-950 text-slate-300 border-r border-slate-800/90 flex-shrink-0 select-none shadow-xl z-30">
         {/* Brand Header with Glowing Accent */}
-        <div className="h-18 flex items-center gap-3 px-6 bg-slate-950/80 border-b border-slate-800/80">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 ring-1 ring-white/20">
+        <div className="h-20 px-6 py-4.5 flex items-center gap-3.5 bg-slate-950/90 border-b border-slate-800/80">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 ring-1 ring-white/20 flex-shrink-0">
             <Sparkles className="w-5 h-5" />
           </div>
           <div>
@@ -209,9 +209,9 @@ export const AppLayout = () => {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
         {/* Top Navigation Bar with Glassmorphism */}
-        <header className="h-16 bg-white/90 backdrop-blur-md border-b border-slate-200/90 flex items-center justify-between px-6 z-20 sticky top-0 shadow-xs">
+        <header className="h-16 flex-shrink-0 bg-white/90 backdrop-blur-md border-b border-slate-200/90 flex items-center justify-between px-6 z-20 shadow-xs">
           <div className="flex items-center gap-4 flex-1">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -374,8 +374,10 @@ export const AppLayout = () => {
         )}
 
         {/* Main Content Body */}
-        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto space-y-6">
-          <Outlet />
+        <main className="flex-1 overflow-y-auto p-6 md:p-8">
+          <div className="max-w-7xl w-full mx-auto space-y-6">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

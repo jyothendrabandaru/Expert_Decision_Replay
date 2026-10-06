@@ -26,11 +26,6 @@ export const LoginPage = () => {
     }
   };
 
-  const handleQuickLogin = (demoEmail, demoPwd) => {
-    setEmail(demoEmail);
-    setPassword(demoPwd);
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       {/* Background Subtle Gradient */}
@@ -101,47 +96,6 @@ export const LoginPage = () => {
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
-
-          {/* Quick Demo Switcher */}
-          <div className="mt-8 pt-6 border-t border-slate-800">
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3 text-center">
-              Quick Demo Accounts (Click to Fill)
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin@edrp.org', 'Password123!')}
-                className="p-2 rounded-lg bg-slate-950/70 border border-purple-500/30 hover:border-purple-500 text-left transition-colors text-xs"
-              >
-                <span className="block font-bold text-purple-400">Administrator</span>
-                <span className="text-[10px] text-slate-400">admin@edrp.org</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('manager@edrp.org', 'Password123!')}
-                className="p-2 rounded-lg bg-slate-950/70 border border-blue-500/30 hover:border-blue-500 text-left transition-colors text-xs"
-              >
-                <span className="block font-bold text-blue-400">Manager</span>
-                <span className="text-[10px] text-slate-400">manager@edrp.org</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('reviewer@edrp.org', 'Password123!')}
-                className="p-2 rounded-lg bg-slate-950/70 border border-amber-500/30 hover:border-amber-500 text-left transition-colors text-xs"
-              >
-                <span className="block font-bold text-amber-400">Reviewer</span>
-                <span className="text-[10px] text-slate-400">reviewer@edrp.org</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('employee@edrp.org', 'Password123!')}
-                className="p-2 rounded-lg bg-slate-950/70 border border-emerald-500/30 hover:border-emerald-500 text-left transition-colors text-xs"
-              >
-                <span className="block font-bold text-emerald-400">Employee</span>
-                <span className="text-[10px] text-slate-400">employee@edrp.org</span>
-              </button>
-            </div>
-          </div>
 
           <div className="mt-6 text-center">
             <span className="text-xs text-slate-400">Need a new account? </span>

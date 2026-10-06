@@ -9,7 +9,7 @@ from app.api.deps import get_current_user, get_db
 from app.core.exceptions import NotFoundError
 from app.models.collaboration import Attachment, AuditLog, Notification
 from app.models.decision import Alternative, Decision, Stakeholder
-from app.models.identity import Role, Team, User, UserProfile
+from app.models.identity import Role, Team, TeamMember, User, UserProfile
 from app.models.taxonomy import DecisionCategory, DecisionTag, DecisionTagLink
 from app.schemas.decision import DecisionOut
 from app.schemas.repository import (
@@ -377,6 +377,17 @@ def get_knowledge_graph(
     nodes: list[KnowledgeGraphNode] = []
     links: list[KnowledgeGraphLink] = []
 
+    # 0. Resolvers
+    team = db.scalar(select(Team).where(Team.id == decision.team_id)) if decision.team_id else None
+    team_name = team.name if team else "Platform Engineering"
+
+    owner = db.scalar(select(User).where(User.id == decision.owner_id)) if decision.owner_id else None
+    prof = db.scalar(select(UserProfile).where(UserProfile.user_id == decision.owner_id)) if owner else None
+    owner_name = prof.full_name if prof else (owner.email if owner else "Lead Architect")
+
+    cat = db.scalar(select(DecisionCategory).where(DecisionCategory.id == decision.category_id)) if decision.category_id else None
+    cat_name = cat.name if cat else "Enterprise Strategy"
+
     # 1. Center Decision Node
     center_id = f"decision_{decision.id}"
     nodes.append(
@@ -387,22 +398,59 @@ def get_knowledge_graph(
             subLabel=f"v{decision.current_version_no} • {decision.status.capitalize()}",
             color="#2563eb",
             icon="FileText",
-            metadata={"id": str(decision.id), "status": decision.status},
+            metadata={
+                "id": str(decision.id),
+                "title": decision.title,
+                "status": decision.status,
+                "implementation_status": decision.implementation_status,
+                "current_version_no": decision.current_version_no,
+                "problem_statement": decision.problem_statement,
+                "outcome_summary": decision.outcome_summary,
+                "category_name": cat_name,
+                "team_name": team_name,
+                "owner_name": owner_name,
+                "created_at": str(decision.created_at) if decision.created_at else None,
+            },
         )
     )
 
     # 2. Team Node
-    team = db.scalar(select(Team).where(Team.id == decision.team_id)) if decision.team_id else None
-    team_name = team.name if team else "Platform Engineering"
+    team_members_list = []
+    if team:
+        members_query = (
+            select(TeamMember, User, UserProfile, Role)
+            .join(User, TeamMember.user_id == User.id)
+            .join(UserProfile, UserProfile.user_id == User.id, isouter=True)
+            .join(Role, User.role_id == Role.id)
+            .where(TeamMember.team_id == team.id, User.deleted_at.is_(None))
+        )
+        members_data = db.execute(members_query).all()
+        for row in members_data:
+            team_members_list.append({
+                "user_id": str(row[1].id),
+                "full_name": row[2].full_name if row[2] else row[1].email,
+                "email": row[1].email,
+                "role_code": row[3].code,
+                "job_title": row[2].job_title if row[2] else "Software Engineer",
+            })
+
     team_node_id = f"team_{team.id if team else 'default'}"
     nodes.append(
         KnowledgeGraphNode(
             id=team_node_id,
             label=team_name,
             type="team",
-            subLabel="Department",
+            subLabel="Department Squad",
             color="#7c3aed",
             icon="Users",
+            metadata={
+                "team_id": str(team.id) if team else None,
+                "team_name": team_name,
+                "description": team.description if (team and team.description) else f"Cross-functional engineering squad delivering {decision.title}.",
+                "decision_id": str(decision.id),
+                "decision_title": decision.title,
+                "members": team_members_list,
+            },
         )
     )
     links.append(
@@ -423,14 +471,28 @@ def get_knowledge_graph(
     if stakeholders:
         for s in stakeholders:
             s_node_id = f"person_{s.id}"
+            s_user = db.scalar(select(User).where(User.id == s.user_id)) if s.user_id else None
+            s_prof = db.scalar(select(UserProfile).where(UserProfile.user_id == s.user_id)) if s_user else None
+            s_role = db.scalar(select(Role).where(Role.id == s_user.role_id)) if s_user else None
+            
             nodes.append(
                 KnowledgeGraphNode(
                     id=s_node_id,
-                    label=s.name,
+                    label=s.display_name if hasattr(s, 'display_name') else "Stakeholder",
                     type="person",
-                    subLabel=s.role_or_title or "Stakeholder",
+                    subLabel=s.stakeholder_role if hasattr(s, 'stakeholder_role') else "Stakeholder",
                     color="#059669",
                     icon="UserCheck",
+                    metadata={
+                        "user_id": str(s.user_id) if s.user_id else None,
+                        "name": s.display_name if hasattr(s, 'display_name') else "Stakeholder",
+                        "email": s_user.email if s_user else f"{s.display_name.lower().replace(' ', '.')}@enterprise.org",
+                        "role": s_role.code if s_role else "employee",
+                        "job_title": s_prof.job_title if s_prof else (s.stakeholder_role or "Stakeholder"),
+                        "department": s_prof.department if s_prof else "Engineering",
+                        "decision_id": str(decision.id),
+                        "decision_title": decision.title,
+                    },
                 )
             )
             links.append(
@@ -443,10 +505,6 @@ def get_knowledge_graph(
                 )
             )
     else:
-        # Fallback to decision owner
-        owner = db.scalar(select(User).where(User.id == decision.owner_id)) if decision.owner_id else None
-        prof = db.scalar(select(UserProfile).where(UserProfile.user_id == decision.owner_id)) if owner else None
-        owner_name = prof.full_name if prof else (owner.email if owner else "Lead Architect")
         owner_node_id = f"person_{decision.owner_id if decision.owner_id else 'default'}"
         nodes.append(
             KnowledgeGraphNode(
@@ -456,6 +514,16 @@ def get_knowledge_graph(
                 subLabel="Lead Architect",
                 color="#059669",
                 icon="UserCheck",
+                metadata={
+                    "user_id": str(owner.id) if owner else None,
+                    "name": owner_name,
+                    "email": owner.email if owner else "architect@enterprise.org",
+                    "role": owner.role.code if (owner and owner.role) else "employee",
+                    "department": prof.department if (prof and prof.department) else "Architecture & Engineering",
+                    "job_title": prof.job_title if (prof and prof.job_title) else "Principal Systems Architect",
+                    "decision_id": str(decision.id),
+                    "decision_title": decision.title,
+                },
             )
         )
         links.append(
@@ -484,6 +552,15 @@ def get_knowledge_graph(
                     subLabel=get_file_extension(att.file_name).upper(),
                     color="#0891b2",
                     icon="File",
+                    metadata={
+                        "attachment_id": str(att.id),
+                        "filename": att.file_name,
+                        "file_type": get_file_extension(att.file_name),
+                        "file_size_bytes": att.byte_size,
+                        "decision_id": str(decision.id),
+                        "decision_title": decision.title,
+                        "download_url": f"/api/v1/attachments/{att.id}/download",
+                    },
                 )
             )
             links.append(
@@ -505,6 +582,14 @@ def get_knowledge_graph(
                 subLabel="PDF Report",
                 color="#0891b2",
                 icon="File",
+                metadata={
+                    "filename": f"{decision.title[:22]}_Architecture_Plan.pdf",
+                    "file_type": "pdf",
+                    "file_size_bytes": 245760,
+                    "decision_id": str(decision.id),
+                    "decision_title": decision.title,
+                    "download_url": f"/api/v1/reports/decision/{decision.id}/pdf",
+                },
             )
         )
         links.append(
@@ -527,6 +612,12 @@ def get_knowledge_graph(
             subLabel=decision.implementation_status.replace("_", " ").title(),
             color="#16a34a" if decision.status in ["approved", "active"] else "#d97706",
             icon="CheckCircle",
+            metadata={
+                "status": decision.status,
+                "implementation_status": decision.implementation_status,
+                "decision_id": str(decision.id),
+                "decision_title": decision.title,
+            },
         )
     )
     links.append(
@@ -558,6 +649,12 @@ def get_knowledge_graph(
                     subLabel="Taxonomy Tag",
                     color="#d97706",
                     icon="Tag",
+                    metadata={
+                        "tag_id": str(t.id),
+                        "tag_name": t.name,
+                        "decision_id": str(decision.id),
+                        "decision_title": decision.title,
+                    },
                 )
             )
             links.append(
@@ -579,6 +676,11 @@ def get_knowledge_graph(
                 subLabel="Core Domain",
                 color="#d97706",
                 icon="Tag",
+                metadata={
+                    "tag_name": "Infrastructure & Scalability",
+                    "decision_id": str(decision.id),
+                    "decision_title": decision.title,
+                },
             )
         )
         links.append(
@@ -592,8 +694,6 @@ def get_knowledge_graph(
         )
 
     # 7. Impact / Category
-    cat = db.scalar(select(DecisionCategory).where(DecisionCategory.id == decision.category_id)) if decision.category_id else None
-    cat_name = cat.name if cat else "Enterprise Strategy"
     impact_node_id = f"impact_{decision.category_id if decision.category_id else 'gen'}"
     nodes.append(
         KnowledgeGraphNode(
@@ -603,6 +703,13 @@ def get_knowledge_graph(
             subLabel="Strategic Influence",
             color="#db2777",
             icon="TrendingUp",
+            metadata={
+                "category_id": str(cat.id) if cat else None,
+                "category_name": cat_name,
+                "description": cat.description if (cat and cat.description) else "Core strategic architectural pillar and technical baseline.",
+                "decision_id": str(decision.id),
+                "decision_title": decision.title,
+            },
         )
     )
     links.append(

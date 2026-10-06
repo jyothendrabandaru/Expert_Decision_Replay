@@ -9,7 +9,13 @@ import api from '../api/client';
  */
 export const downloadFile = async (url, fallbackFilename = 'downloaded_file') => {
   try {
-    const res = await api.get(url, {
+    if (!url || url === '#') {
+      alert('No download resource available.');
+      return;
+    }
+
+    const cleanUrl = url.startsWith('/api/v1') ? url.replace('/api/v1', '') : url;
+    const res = await api.get(cleanUrl, {
       responseType: 'blob',
     });
 
